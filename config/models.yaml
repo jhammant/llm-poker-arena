@@ -18,7 +18,7 @@ providers:
 # Default sampling for poker decisions (low temp = steadier play).
 defaults:
   temperature: 0.5
-  max_tokens: 512
+  max_tokens: 1024                  # headroom so reasoning models finish CoT *and* emit the JSON
   reasoning_effort: low             # for "thinking" models; keeps decisions fast
 
 players:

@@ -81,6 +81,9 @@ def parse_action(text: str) -> Action | None:
     """Extract a flat JSON action object from the model's reply. None on failure."""
     if not text:
         return None
+    # Strip reasoning wrappers some models inline into the content channel.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<reasoning>.*?</reasoning>", "", text, flags=re.DOTALL | re.IGNORECASE)
     candidates = re.findall(r"\{[^{}]*\}", text, re.DOTALL) or re.findall(r"\{.*\}", text, re.DOTALL)
     for blob in candidates:
         try:
