@@ -15,12 +15,23 @@ class LLMPlayer(Player):
         self.system_extra = system_extra  # injected strategy "tuition", if any
         self.retries = retries
         self.usage = UsageAccumulator()
+        self.on_stream = None  # optional (seat, thinking, answer) sink for live streaming
+
+    def _generate(self, messages, obs):
+        if self.on_stream is not None:
+            seat = obs.hero
+            try:
+                return self.client.complete_stream(
+                    messages, lambda thinking, answer: self.on_stream(seat, thinking, answer))
+            except Exception:  # streaming unsupported / mid-stream failure -> normal call
+                return self.client.complete(messages)
+        return self.client.complete(messages)
 
     def act(self, obs):
         messages = build_messages(obs, self.system_extra)
         for _ in range(self.retries + 1):
             try:
-                text, st = self.client.complete(messages)
+                text, st = self._generate(messages, obs)
             except Exception:
                 self.usage.errors += 1
                 return None

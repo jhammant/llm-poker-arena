@@ -88,3 +88,43 @@ class LLMClient:
             latency_s=dt,
         )
         return text, st
+
+    def complete_stream(self, messages: list[dict], on_token) -> tuple[str, CallStat]:
+        """Like complete(), but streams. on_token(thinking, answer) is called as
+        tokens arrive (thinking = reasoning channel if the model exposes one,
+        answer = the visible content). Returns (final answer text, CallStat)."""
+        kwargs: dict = dict(
+            model=self.model, messages=messages, temperature=self.temperature,
+            max_tokens=self.max_tokens, stream=True,
+            stream_options={"include_usage": True},
+        )
+        if self.extra_headers:
+            kwargs["extra_headers"] = self.extra_headers
+        if self.reasoning_effort:
+            kwargs["extra_body"] = {"reasoning_effort": self.reasoning_effort}
+
+        t0 = time.time()
+        think: list[str] = []
+        ans: list[str] = []
+        usage = None
+        for chunk in self._client.chat.completions.create(**kwargs):
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            r = getattr(delta, "reasoning", None) or getattr(delta, "reasoning_content", None)
+            c = getattr(delta, "content", None)
+            if r:
+                think.append(r)
+            if c:
+                ans.append(c)
+            if r or c:
+                on_token("".join(think), "".join(ans))
+        dt = time.time() - t0
+        st = CallStat(
+            prompt_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+            completion_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+            latency_s=dt,
+        )
+        return "".join(ans), st

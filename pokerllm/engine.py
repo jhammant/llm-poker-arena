@@ -224,6 +224,7 @@ class HandEngine:
             note=action.note,
             pot=self.pot,
             stacks=list(self.stacks),
+            to_call=legal.call_amount,
         )
 
     # ------------------------------------------------------------ betting round

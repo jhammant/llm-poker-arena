@@ -87,7 +87,7 @@ def run_smoke(model: str, hands: int, stack: int, sb: int, bb: int, seed: int) -
 
 
 def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, seed,
-                    duplicate, out, tuition_mode="full", gauntlet=False, live=None):
+                    duplicate, out, tuition_mode="full", gauntlet=False, live=None, repeats=1):
     import datetime
 
     from . import report
@@ -121,7 +121,8 @@ def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, see
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         out = f"runs/bakeoff_{ts}.json"
     res = run_bakeoff(comps, hands, stack, sb, bb, seed, duplicate, ref_hands,
-                      out_path=out, tuition_mode=tuition_mode, gauntlet=gauntlet, live_path=live)
+                      out_path=out, tuition_mode=tuition_mode, gauntlet=gauntlet,
+                      live_path=live, repeats=repeats)
     md_path = out.rsplit(".", 1)[0] + ".md"
     with open(md_path, "w") as f:
         f.write(report.render(res))
@@ -178,6 +179,7 @@ def main() -> None:
     bo.add_argument("--gauntlet", action="store_true",
                     help="skip cross-model LLM-vs-LLM; keep anchor matches + same-model tuition A/B")
     bo.add_argument("--live", default=None, help="path to write the live broadcast state JSON")
+    bo.add_argument("--repeats", type=int, default=1, help="repeat the whole round-robin N times (accumulate toward significance)")
     bo.add_argument("--out", default=None)
 
     rep = sub.add_parser("report")
@@ -201,7 +203,8 @@ def main() -> None:
         tuition = [m.strip() for m in args.tuition.split(",") if m.strip()]
         run_bakeoff_cli(models, tuition, args.hands, args.reference_hands,
                         args.stack, args.sb, args.bb, args.seed, args.duplicate, args.out,
-                        tuition_mode=args.tuition_mode, gauntlet=args.gauntlet, live=args.live)
+                        tuition_mode=args.tuition_mode, gauntlet=args.gauntlet, live=args.live,
+                        repeats=args.repeats)
     elif args.cmd == "report":
         from . import report
         out = args.out or args.json.rsplit(".", 1)[0] + ".md"
