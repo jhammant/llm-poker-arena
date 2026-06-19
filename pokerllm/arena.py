@@ -29,7 +29,9 @@ from .players.random_player import RandomPlayer
 from .rating import Elo, bb_per_100, bootstrap_ci
 
 STRATEGY_DIR = "strategy_docs"
+CHEATSHEET = "tuition/cheatsheet.md"
 TUITION_CHAR_CAP = 16000
+ANCHORS = {"heuristic", "random"}
 
 
 @dataclass
@@ -39,17 +41,24 @@ class Competitor:
     tuition: bool = False
 
 
-def load_tuition(directory: str = STRATEGY_DIR) -> str | None:
-    """Concatenate the strategy primers into one tuition block (None if absent)."""
+def load_tuition(mode: str = "full", directory: str = STRATEGY_DIR) -> str | None:
+    """Build the tuition block.
+
+    mode="lite": the condensed cheat-sheet (small, fast, fair test of guidance).
+    mode="full": the whole strategy corpus concatenated (large; may degrade
+                 small models — see the directional findings).
+    """
+    if mode == "lite":
+        try:
+            with open(CHEATSHEET) as f:
+                return f.read().strip()[:TUITION_CHAR_CAP]
+        except FileNotFoundError:
+            return None
     files = sorted(glob.glob(os.path.join(directory, "*.md")))
     if not files:
         return None
-    chunks = []
-    for path in files:
-        with open(path) as f:
-            chunks.append(f.read().strip())
-    text = "\n\n---\n\n".join(chunks)
-    return text[:TUITION_CHAR_CAP]
+    chunks = [open(p).read().strip() for p in files]
+    return "\n\n---\n\n".join(chunks)[:TUITION_CHAR_CAP]
 
 
 def _build_player(cfg: dict, comp: Competitor, tuition_text: str | None):
@@ -91,9 +100,11 @@ def run_bakeoff(
     reference_hands: int = 0,
     out_path: str | None = None,
     verbose: bool = True,
+    tuition_mode: str = "full",
+    gauntlet: bool = False,
 ) -> dict:
     cfg = load_config()
-    tuition_text = load_tuition()
+    tuition_text = load_tuition(tuition_mode)
     rng = random.Random(seed)
     elo = Elo()
     bb_deltas: dict[str, list[float]] = {c.label: [] for c in competitors}
@@ -102,14 +113,21 @@ def run_bakeoff(
     matches = []
 
     if verbose:
-        tn = "on" if tuition_text else "MISSING"
+        tn = f"{tuition_mode} ({len(tuition_text)} chars)" if tuition_text else "MISSING"
         print(f"Bake-off: {len(competitors)} competitors, {hands} hands/match, "
-              f"duplicate={'on' if duplicate else 'off'}, tuition_corpus={tn}\n")
+              f"duplicate={'on' if duplicate else 'off'}, gauntlet={'on' if gauntlet else 'off'}, "
+              f"tuition={tn}\n")
 
     # ---- round-robin (Elo + head-to-head BB/100) ----
     for i in range(len(competitors)):
         for j in range(i + 1, len(competitors)):
             ca, cb = competitors[i], competitors[j]
+            if gauntlet:
+                # skip expensive cross-model LLM-vs-LLM; keep anchor matches and
+                # same-model tuition A/B pairs.
+                both_llm = ca.model not in ANCHORS and cb.model not in ANCHORS
+                if both_llm and ca.model != cb.model:
+                    continue
             pa, pb = players[ca.label], players[cb.label]
             t0 = time.time()
             res = play_session(pa, pb, hands, stack, sb, bb,
@@ -153,6 +171,7 @@ def run_bakeoff(
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "config": {"hands": hands, "stack": stack, "sb": sb, "bb": bb, "seed": seed,
                    "duplicate": duplicate, "reference_hands": reference_hands,
+                   "gauntlet": gauntlet, "tuition_mode": tuition_mode,
                    "tuition_corpus": bool(tuition_text),
                    "tuition_chars": len(tuition_text) if tuition_text else 0},
         "competitors": [{"label": c.label, "model": c.model, "tuition": c.tuition} for c in competitors],
