@@ -86,6 +86,35 @@ def run_smoke(model: str, hands: int, stack: int, sb: int, bb: int, seed: int) -
           f"parse_failures: {u.parse_failures}  errors: {u.errors}")
 
 
+def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, seed, duplicate, out):
+    import datetime
+
+    from . import report
+    from .arena import Competitor, run_bakeoff
+
+    comps: list = []
+    seen: set = set()
+    for m in models:
+        if m and m not in seen:
+            comps.append(Competitor(label=m, model=m))
+            seen.add(m)
+    for m in tuition_models:
+        if m and m not in seen:  # ensure a plain variant exists to compare against
+            comps.append(Competitor(label=m, model=m))
+            seen.add(m)
+        if m:
+            comps.append(Competitor(label=f"{m}+tuition", model=m, tuition=True))
+
+    if not out:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = f"runs/bakeoff_{ts}.json"
+    res = run_bakeoff(comps, hands, stack, sb, bb, seed, duplicate, ref_hands, out_path=out)
+    md_path = out.rsplit(".", 1)[0] + ".md"
+    with open(md_path, "w") as f:
+        f.write(report.render(res))
+    print(f"Report -> {md_path}")
+
+
 def _leaderboard(roster, elo: Elo, bb_deltas: dict[str, list[float]]) -> None:
     print("\n=== Leaderboard ===")
     rows = []
@@ -119,6 +148,24 @@ def main() -> None:
     smoke.add_argument("--bb", type=int, default=2)
     smoke.add_argument("--seed", type=int, default=42)
 
+    bo = sub.add_parser("bakeoff")
+    bo.add_argument("--models", default="heuristic,random",
+                    help="comma-separated competitor names (config models, or heuristic/random)")
+    bo.add_argument("--tuition", default="",
+                    help="comma-separated models to ALSO run with the strategy corpus (adds +tuition variant)")
+    bo.add_argument("--hands", type=int, default=200)
+    bo.add_argument("--reference-hands", type=int, default=0, help="extra hands vs heuristic baseline")
+    bo.add_argument("--stack", type=int, default=200)
+    bo.add_argument("--sb", type=int, default=1)
+    bo.add_argument("--bb", type=int, default=2)
+    bo.add_argument("--seed", type=int, default=42)
+    bo.add_argument("--duplicate", action="store_true", help="mirrored-card play (2x games, tighter CIs)")
+    bo.add_argument("--out", default=None)
+
+    rep = sub.add_parser("report")
+    rep.add_argument("json", help="path to a saved bakeoff JSON")
+    rep.add_argument("--out", default=None)
+
     args = ap.parse_args()
 
     if args.cmd == "demo":
@@ -127,6 +174,16 @@ def main() -> None:
         run_league(args.hands or 2000, args.stack, args.sb, args.bb, args.seed, not args.no_duplicate)
     elif args.cmd == "smoke":
         run_smoke(args.model, args.hands, args.stack, args.sb, args.bb, args.seed)
+    elif args.cmd == "bakeoff":
+        models = [m.strip() for m in args.models.split(",") if m.strip()]
+        tuition = [m.strip() for m in args.tuition.split(",") if m.strip()]
+        run_bakeoff_cli(models, tuition, args.hands, args.reference_hands,
+                        args.stack, args.sb, args.bb, args.seed, args.duplicate, args.out)
+    elif args.cmd == "report":
+        from . import report
+        out = args.out or args.json.rsplit(".", 1)[0] + ".md"
+        report.render_file(args.json, out)
+        print(f"Report -> {out}")
     else:
         ap.print_help()
 
