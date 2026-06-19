@@ -107,6 +107,16 @@ def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, see
             tag = "+docs" if tuition_mode == "lite" else "+tuition"
             comps.append(Competitor(label=f"{m}{tag}", model=m, tuition=True))
 
+    # Preflight: fail fast on an unknown model name instead of mid-run.
+    from .arena import ANCHORS
+    from .config import load_config
+    known = {p["name"] for p in load_config().get("players", [])} | ANCHORS
+    missing = sorted({c.model for c in comps if c.model not in known})
+    if missing:
+        print(f"ERROR: unknown model name(s) not in config/models.yaml: {', '.join(missing)}")
+        print(f"Known: {', '.join(sorted(known))}")
+        return
+
     if not out:
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         out = f"runs/bakeoff_{ts}.json"

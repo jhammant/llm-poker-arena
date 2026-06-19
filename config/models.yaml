@@ -38,6 +38,16 @@ players:
     model: qwen/qwen3.6-27b
     enabled: true
     tags: [strong, local]
+  - name: qwen3-next-80b
+    provider: lmstudio
+    model: qwen/qwen3-next-80b
+    enabled: true
+    tags: [strong, local]          # 80B MoE, ~3B active -> faster than its size
+  - name: qwen3.5-35b-a3b
+    provider: lmstudio
+    model: qwen/qwen3.5-35b-a3b
+    enabled: false
+    tags: [strong, local]
   - name: glm-4.7-flash
     provider: lmstudio
     model: zai-org/glm-4.7-flash
