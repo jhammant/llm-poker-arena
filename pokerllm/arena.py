@@ -22,6 +22,7 @@ import random
 import time
 from dataclasses import dataclass
 
+from . import report
 from .config import load_config, make_player
 from .match import play_session
 from .players.heuristic import HeuristicPlayer
@@ -110,15 +111,51 @@ def run_bakeoff(
     bb_deltas: dict[str, list[float]] = {c.label: [] for c in competitors}
 
     players = {c.label: _build_player(cfg, c, tuition_text) for c in competitors}
-    matches = []
+    matches: list = []
+    reference: dict = {}
 
     if verbose:
         tn = f"{tuition_mode} ({len(tuition_text)} chars)" if tuition_text else "MISSING"
         print(f"Bake-off: {len(competitors)} competitors, {hands} hands/match, "
               f"duplicate={'on' if duplicate else 'off'}, gauntlet={'on' if gauntlet else 'off'}, "
-              f"tuition={tn}\n")
+              f"tuition={tn}\n", flush=True)
 
-    # ---- round-robin (Elo + head-to-head BB/100) ----
+    def snapshot(status: str) -> dict:
+        ratings = []
+        for c in competitors:
+            lo, hi = bootstrap_ci(bb_deltas[c.label])
+            ratings.append({"label": c.label, "model": c.model, "tuition": c.tuition,
+                            "elo": round(elo.get(c.label), 1),
+                            "bb100": round(bb_per_100(bb_deltas[c.label]), 2),
+                            "ci": [round(lo, 1), round(hi, 1)],
+                            "hands": len(bb_deltas[c.label])})
+        return {
+            "created": datetime.datetime.now().isoformat(timespec="seconds"),
+            "config": {"hands": hands, "stack": stack, "sb": sb, "bb": bb, "seed": seed,
+                       "duplicate": duplicate, "reference_hands": reference_hands,
+                       "gauntlet": gauntlet, "tuition_mode": tuition_mode,
+                       "tuition_corpus": bool(tuition_text),
+                       "tuition_chars": len(tuition_text) if tuition_text else 0,
+                       "status": status},
+            "competitors": [{"label": c.label, "model": c.model, "tuition": c.tuition} for c in competitors],
+            "ratings": ratings,
+            "reference": reference,
+            "matches": matches,
+            "usage": {c.label: _usage_of(players[c.label]) for c in competitors},
+        }
+
+    def checkpoint(status: str = "running") -> dict:
+        """Write JSON + Markdown after each match so progress is live & crash-safe."""
+        results = snapshot(status)
+        if out_path:
+            os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+            with open(out_path, "w") as f:
+                json.dump(results, f, indent=2)
+            with open(out_path.rsplit(".", 1)[0] + ".md", "w") as f:
+                f.write(report.render(results))
+        return results
+
+    # ---- round-robin (Elo + head-to-head BB/100), checkpointing each match ----
     for i in range(len(competitors)):
         for j in range(i + 1, len(competitors)):
             ca, cb = competitors[i], competitors[j]
@@ -142,10 +179,10 @@ def run_bakeoff(
                             "chips_a": chips_a, "bb100_a": round(bb_per_100(res.bb_deltas), 2),
                             "seconds": round(dt, 1)})
             if verbose:
-                print(f"  {ca.label:>22} vs {cb.label:<22} A={chips_a:+7d}  ({dt:5.1f}s)")
+                print(f"  {ca.label:>22} vs {cb.label:<22} A={chips_a:+7d}  ({dt:5.1f}s)", flush=True)
+            checkpoint()
 
     # ---- optional gauntlet vs the free heuristic (comparable yardstick) ----
-    reference = {}
     if reference_hands > 0:
         for c in competitors:
             ref = HeuristicPlayer("heuristic_ref")
@@ -156,35 +193,10 @@ def run_bakeoff(
                                   "ci": [round(lo, 1), round(hi, 1)],
                                   "chips": res.chips[0], "hands": reference_hands}
             if verbose:
-                print(f"  [ref] {c.label:>22} vs heuristic  bb/100={reference[c.label]['bb100']:+.1f}")
+                print(f"  [ref] {c.label:>22} vs heuristic  bb/100={reference[c.label]['bb100']:+.1f}", flush=True)
+            checkpoint()
 
-    ratings = []
-    for c in competitors:
-        lo, hi = bootstrap_ci(bb_deltas[c.label])
-        ratings.append({"label": c.label, "model": c.model, "tuition": c.tuition,
-                        "elo": round(elo.get(c.label), 1),
-                        "bb100": round(bb_per_100(bb_deltas[c.label]), 2),
-                        "ci": [round(lo, 1), round(hi, 1)],
-                        "hands": len(bb_deltas[c.label])})
-
-    results = {
-        "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "config": {"hands": hands, "stack": stack, "sb": sb, "bb": bb, "seed": seed,
-                   "duplicate": duplicate, "reference_hands": reference_hands,
-                   "gauntlet": gauntlet, "tuition_mode": tuition_mode,
-                   "tuition_corpus": bool(tuition_text),
-                   "tuition_chars": len(tuition_text) if tuition_text else 0},
-        "competitors": [{"label": c.label, "model": c.model, "tuition": c.tuition} for c in competitors],
-        "ratings": ratings,
-        "reference": reference,
-        "matches": matches,
-        "usage": {c.label: _usage_of(players[c.label]) for c in competitors},
-    }
-
-    if out_path:
-        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-        with open(out_path, "w") as f:
-            json.dump(results, f, indent=2)
-        if verbose:
-            print(f"\nSaved results -> {out_path}")
+    results = checkpoint("complete")
+    if verbose and out_path:
+        print(f"\nSaved results -> {out_path}", flush=True)
     return results

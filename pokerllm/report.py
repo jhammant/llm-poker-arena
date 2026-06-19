@@ -24,9 +24,11 @@ def render(results: dict) -> str:
     out: list[str] = []
     w = out.append
 
+    status = cfg.get("status", "complete")
     w("# LLM Poker Bake-off Report")
     w("")
-    w(f"_Generated {results['created']}_")
+    badge = {"running": "🟡 RUNNING (live, updates each match)", "complete": "🟢 complete"}.get(status, status)
+    w(f"_Generated {results['created']}_ &nbsp;·&nbsp; **{badge}** &nbsp;·&nbsp; {len(matches)} matches done")
     w("")
     w(f"**Game:** heads-up No-Limit Hold'em &nbsp;·&nbsp; "
       f"{cfg['hands']} hands/match &nbsp;·&nbsp; stack {cfg['stack']} (bb={cfg['bb']}) &nbsp;·&nbsp; "
