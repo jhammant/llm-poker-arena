@@ -50,6 +50,42 @@ def run_league(hands: int, stack: int, sb: int, bb: int, seed: int, duplicate: b
     _leaderboard(roster, elo, bb_deltas)
 
 
+def _make_printer():
+    """Pretty-print engine events for a single watched session."""
+    def printer(e: dict) -> None:
+        t = e["type"]
+        if t == "hand_start":
+            print(f"\n--- new hand (button=seat{e['button']}) holes={e['holes']} ---")
+        elif t == "board":
+            print(f"  [{e['street']}] board: {e['board']}")
+        elif t == "action":
+            amt = f" to {e['amount']}" if e["action"] == "raise" else ""
+            note = f"   // {e['note']}" if e.get("note") else ""
+            print(f"    seat{e['seat']}: {e['action']}{amt}  (pot {e['pot']}){note}")
+        elif t == "result":
+            print(f"  => {e['note']}  board={e['board']} holes={e['holes']} deltas={e['deltas']}")
+        elif t == "error":
+            print(f"    !! seat{e['seat']} error: {e['error']}")
+    return printer
+
+
+def run_smoke(model: str, hands: int, stack: int, sb: int, bb: int, seed: int) -> None:
+    """Watch one local/cloud LLM play vs the heuristic — proves the LLM loop works."""
+    from .config import load_config, make_player
+
+    cfg = load_config()
+    llm = make_player(cfg, model)
+    opp = HeuristicPlayer("heuristic")
+    print(f"Smoke test: {model} (LLM) vs heuristic — {hands} hands\n")
+    res = play_session(llm, opp, hands, stack, sb, bb, random.Random(seed),
+                       duplicate=False, on_event=_make_printer())
+    u = llm.usage
+    print(f"\nResult: {model} chips {res.chips[0]:+d}  ({res.chips[0] / bb:+.1f} bb)")
+    print(f"LLM calls: {u.calls}  avg latency: {u.avg_latency_s:.2f}s  "
+          f"tokens(p/c): {u.prompt_tokens}/{u.completion_tokens}  "
+          f"parse_failures: {u.parse_failures}  errors: {u.errors}")
+
+
 def _leaderboard(roster, elo: Elo, bb_deltas: dict[str, list[float]]) -> None:
     print("\n=== Leaderboard ===")
     rows = []
@@ -75,16 +111,24 @@ def main() -> None:
         p.add_argument("--bb", type=int, default=2)
         p.add_argument("--seed", type=int, default=42)
         p.add_argument("--no-duplicate", action="store_true")
+    smoke = sub.add_parser("smoke")
+    smoke.add_argument("--model", required=True, help="player name from config/models.yaml")
+    smoke.add_argument("--hands", type=int, default=5)
+    smoke.add_argument("--stack", type=int, default=200)
+    smoke.add_argument("--sb", type=int, default=1)
+    smoke.add_argument("--bb", type=int, default=2)
+    smoke.add_argument("--seed", type=int, default=42)
+
     args = ap.parse_args()
 
     if args.cmd == "demo":
-        hands = args.hands or 300
+        run_league(args.hands or 300, args.stack, args.sb, args.bb, args.seed, not args.no_duplicate)
     elif args.cmd == "league":
-        hands = args.hands or 2000
+        run_league(args.hands or 2000, args.stack, args.sb, args.bb, args.seed, not args.no_duplicate)
+    elif args.cmd == "smoke":
+        run_smoke(args.model, args.hands, args.stack, args.sb, args.bb, args.seed)
     else:
         ap.print_help()
-        return
-    run_league(hands, args.stack, args.sb, args.bb, args.seed, not args.no_duplicate)
 
 
 if __name__ == "__main__":
