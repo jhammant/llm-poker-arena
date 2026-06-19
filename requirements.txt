@@ -1,0 +1,10 @@
+# Core engine + ratings (no network needed)
+treys==0.1.8          # battle-tested 5/6/7-card hand evaluator
+PyYAML>=6.0
+
+# LLM players (OpenAI-compatible: OpenRouter / LM Studio / Ollama)
+openai>=1.40
+
+# Live web dashboard (added next phase)
+fastapi>=0.110
+uvicorn[standard]>=0.29

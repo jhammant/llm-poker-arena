@@ -1,0 +1,84 @@
+# Model roster for the poker league.
+#
+# A "player" is just a provider endpoint + a model id. All three providers below
+# speak the OpenAI-compatible API, so a single client handles them identically.
+# Start with local (free) models; flip `enabled: true` to add a model to a run.
+
+providers:
+  lmstudio:
+    base_url: http://localhost:1234/v1
+    api_key: lm-studio              # LM Studio ignores the key value
+  ollama:
+    base_url: http://localhost:11434/v1
+    api_key: ollama                 # Ollama ignores the key value
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY # read from env; never hard-code keys
+
+# Default sampling for poker decisions (low temp = steadier play).
+defaults:
+  temperature: 0.5
+  max_tokens: 512
+  reasoning_effort: low             # for "thinking" models; keeps decisions fast
+
+players:
+  # ---- LM Studio (local, free) ----
+  - name: gpt-oss-120b
+    provider: lmstudio
+    model: openai/gpt-oss-120b
+    enabled: true
+    tags: [strong, local]
+  - name: gpt-oss-20b
+    provider: lmstudio
+    model: openai/gpt-oss-20b
+    enabled: true
+    tags: [weak, local, experiment-pair]   # weak half of the strategy-docs test
+  - name: qwen3.6-27b
+    provider: lmstudio
+    model: qwen/qwen3.6-27b
+    enabled: true
+    tags: [strong, local]
+  - name: glm-4.7-flash
+    provider: lmstudio
+    model: zai-org/glm-4.7-flash
+    enabled: true
+    tags: [mid, local]
+  - name: gemma-3-4b
+    provider: lmstudio
+    model: google/gemma-3-4b
+    enabled: false
+    tags: [weak, local, experiment-pair]
+  - name: gemma-4-26b
+    provider: lmstudio
+    model: google/gemma-4-26b-a4b
+    enabled: false
+    tags: [strong, local]
+
+  # ---- Ollama (local, free) ----
+  - name: llama3.2-3b
+    provider: ollama
+    model: llama3.2:3b
+    enabled: false
+    tags: [weak, local]
+
+  # ---- OpenRouter (cloud, paid) — enable once local play works ----
+  # NOTE: confirm current model ids on openrouter.ai/models before enabling.
+  - name: claude-haiku
+    provider: openrouter
+    model: anthropic/claude-3.5-haiku
+    enabled: false
+    tags: [frontier, cloud]
+  - name: gpt-mini
+    provider: openrouter
+    model: openai/gpt-4o-mini
+    enabled: false
+    tags: [frontier, cloud]
+
+# The strategy-docs experiment (wired up in the experiment phase):
+# same model, with vs without retrieval-augmented poker strategy.
+experiments:
+  strategy_docs:
+    enabled: false
+    embed_model: text-embedding-nomic-embed-text-v1.5  # LM Studio embeddings
+    inject_into: [gpt-oss-20b]            # the weak model gets the docs
+    compare_against: [gpt-oss-120b]       # vs the strong model
