@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LLM Poker Arena — LIVE</title>
+<style>
+  :root{--bg:#0c1018;--panel:#141b27;--panel2:#1b2433;--line:#26303f;
+    --felt1:#10603f;--felt2:#0a4630;--text:#e8eef6;--muted:#8aa0b8;
+    --gold:#e7b94e;--red:#ef5d6c;--green:#3fd18b;--blue:#5aa0ff;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--text)}
+  header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);
+         background:linear-gradient(180deg,#121826,#0c1018);flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;letter-spacing:.3px}header h1 span{color:var(--gold)}
+  .live{font-weight:800;font-size:12px;border-radius:20px;padding:3px 10px;background:#3a1414;color:var(--red)}
+  .live.on{background:#10341f;color:var(--green)}
+  .matchinfo{margin-left:auto;color:var(--muted);font-size:13px;text-align:right}
+  .matchinfo b{color:var(--text)}
+  .wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px;max-width:1240px;margin:0 auto}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .table{position:relative;border-radius:24px;padding:24px;min-height:520px;
+    background:radial-gradient(120% 90% at 50% 40%,var(--felt1),var(--felt2));
+    border:10px solid #5a3b22;box-shadow:inset 0 0 80px rgba(0,0,0,.5)}
+  .seat{position:absolute;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px}
+  .seat.top{top:20px}.seat.bottom{bottom:20px}
+  .plate{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:8px 12px;min-width:250px;transition:box-shadow .2s,border-color .2s}
+  .plate.acting{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 18px rgba(231,185,78,.5)}
+  .plate.winner{border-color:var(--green);box-shadow:0 0 0 2px var(--green),0 0 22px rgba(63,209,139,.55)}
+  .ava{width:34px;height:34px;border-radius:50%;background:#222d40;display:grid;place-items:center;
+    font-weight:800;color:var(--gold)}
+  .ava.dealer{border:2px solid var(--gold)}
+  .pmeta{display:flex;flex-direction:column}.pname{font-weight:700;font-size:14px}
+  .pstack{font-size:11px;color:var(--muted)}
+  .badge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;background:#202b3c;color:var(--muted)}
+  .badge.check{color:var(--blue)}.badge.call{color:var(--green)}.badge.raise{color:var(--gold);background:#3a2e12}.badge.fold{color:var(--muted)}
+  .cards{display:flex;gap:6px;min-height:56px}
+  .card{width:42px;height:58px;border-radius:7px;background:#f6f7fb;color:#11161f;display:flex;flex-direction:column;
+    justify-content:space-between;padding:4px 5px;font-weight:800;box-shadow:0 3px 8px rgba(0,0,0,.35)}
+  .card .r{font-size:15px;line-height:1}.card .s{font-size:16px;text-align:right;line-height:1}
+  .card.red{color:#d12d3f}.card.back{background:repeating-linear-gradient(45deg,#34507a,#34507a 6px,#26405f 6px,#26405f 12px)}
+  .board{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:12px}
+  .board .cards .card{width:54px;height:74px}.board .cards .card .r{font-size:20px}.board .cards .card .s{font-size:22px}
+  .pot{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:30px;padding:7px 18px;font-weight:800;color:var(--gold)}
+  .street{font-size:12px;color:#bfe9cf;letter-spacing:2px;text-transform:uppercase;min-height:14px}
+  .bubble{max-width:300px;min-height:18px;font-size:12px;color:var(--text);background:var(--panel2);
+    border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-style:italic}
+  .bubble:empty{display:none}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .card-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card-panel h3{margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  #feed{height:280px;overflow:auto;font-size:13px;line-height:1.55}
+  #feed .h{color:var(--gold);font-weight:700;margin-top:6px}#feed .r{color:var(--muted)}
+  #feed .reason{color:#9fb6cf;font-style:italic}
+  table.lb{width:100%;border-collapse:collapse;font-size:13px}
+  table.lb th,table.lb td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
+  table.lb td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .pos{color:var(--green)}.neg{color:var(--red)}
+  .tag{font-size:10px;background:#3a2e12;color:var(--gold);border-radius:6px;padding:1px 5px;margin-left:5px}
+  .wait{padding:60px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>&#9824; LLM Poker Arena</span> — LIVE</h1>
+  <span class="live" id="live">connecting…</span>
+  <div class="matchinfo" id="matchinfo"></div>
+</header>
+
+<div class="wrap">
+  <div class="table" id="table">
+    <div class="seat top">
+      <div class="plate" id="plate0">
+        <div class="ava" id="ava0">?</div>
+        <div class="pmeta"><div class="pname" id="name0">—</div><div class="pstack" id="stack0"></div></div>
+        <div class="badge" id="badge0"></div>
+      </div>
+      <div class="cards" id="cards0"></div>
+      <div class="bubble" id="bub0"></div>
+    </div>
+    <div class="board">
+      <div class="street" id="street"></div>
+      <div class="cards" id="board"></div>
+      <div class="pot" id="pot">pot 0</div>
+    </div>
+    <div class="seat bottom">
+      <div class="bubble" id="bub1"></div>
+      <div class="cards" id="cards1"></div>
+      <div class="plate" id="plate1">
+        <div class="ava" id="ava1">?</div>
+        <div class="pmeta"><div class="pname" id="name1">—</div><div class="pstack" id="stack1"></div></div>
+        <div class="badge" id="badge1"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card-panel"><h3>Live action</h3><div id="feed"></div></div>
+    <div class="card-panel"><h3>Leaderboard</h3><div id="lb" style="color:var(--muted);font-size:13px">loading…</div></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const SUIT = {s:'♠',h:'♥',d:'♦',c:'♣'}, RED = {h:1,d:1};
+let curBB = 2;
+
+function cardEl(tok){
+  const d=document.createElement('div');
+  if(!tok||tok==='-'){d.className='card back';return d;}
+  d.className='card'; const rank=tok[0]==='T'?'10':tok[0], suit=tok[1];
+  if(RED[suit])d.classList.add('red');
+  d.innerHTML=`<div class="r">${rank}</div><div class="s">${SUIT[suit]||''}</div>`;
+  return d;
+}
+function renderCards(el,str){el.innerHTML='';(str&&str!=='-'?str.trim().split(/\s+/):[]).forEach(t=>el.appendChild(cardEl(t)));}
+function bbfmt(chips){const v=chips/curBB;return (v>=0?'+':'')+v.toFixed(1)+' bb';}
+
+function lastReasonBySeat(feed,seat){
+  for(let i=feed.length-1;i>=0;i--){const f=feed[i];if(f.kind==='action'&&f.seat===seat&&f.note)return f.note;}
+  return '';
+}
+
+async function pollLive(){
+  try{
+    const s = await (await fetch('/api/live',{cache:'no-store'})).json();
+    if(!s||!s.names){ $('live').textContent='waiting for play…'; setTimeout(pollLive,1500); return; }
+    render(s);
+  }catch(e){ $('live').textContent='reconnecting…'; }
+  setTimeout(pollLive,1200);
+}
+
+function render(s){
+  const running = s.status==='running';
+  $('live').textContent = running?'● LIVE':'■ complete';
+  $('live').className = 'live'+(running?' on':'');
+  $('matchinfo').innerHTML = (s.match? `Match <b>${s.match_index}/${s.total_matches}</b>: ${s.names[0]} vs ${s.names[1]}`:'')
+     + (s.hand_no? ` &nbsp;·&nbsp; hand <b>${s.hand_no}</b>`:'');
+
+  $('name0').textContent=s.names[0]; $('name1').textContent=s.names[1];
+  $('ava0').textContent=(s.names[0][0]||'?').toUpperCase(); $('ava1').textContent=(s.names[1][0]||'?').toUpperCase();
+  $('ava0').classList.toggle('dealer',s.button===0); $('ava1').classList.toggle('dealer',s.button===1);
+
+  const stacks=s.stacks||[0,0], score=s.score||[0,0];
+  $('stack0').textContent=`stack ${stacks[0]} · net ${bbfmt(score[0])}`;
+  $('stack1').textContent=`stack ${stacks[1]} · net ${bbfmt(score[1])}`;
+
+  renderCards($('cards0'),s.hole[0]); renderCards($('cards1'),s.hole[1]);
+  renderCards($('board'),s.board); $('street').textContent=s.street||''; $('pot').textContent='pot '+s.pot;
+
+  // acting / winner highlight
+  const la=s.last_action;
+  for(const seat of [0,1]){
+    const p=$('plate'+seat); p.classList.remove('acting','winner');
+    const b=$('badge'+seat); b.className='badge'; b.textContent='';
+  }
+  if(s.result){
+    const d=s.result.deltas||[0,0];
+    if(d[0]>d[1])$('plate0').classList.add('winner'); else if(d[1]>d[0])$('plate1').classList.add('winner');
+  } else if(la){
+    $('plate'+la.seat).classList.add('acting');
+    const b=$('badge'+la.seat); b.className='badge '+la.action;
+    b.textContent= la.action==='raise'?('RAISE '+la.amount):la.action.toUpperCase();
+  }
+  $('bub0').textContent = (r=>r?('“'+r+'”'):'')(lastReasonBySeat(s.feed||[],0));
+  $('bub1').textContent = (r=>r?('“'+r+'”'):'')(lastReasonBySeat(s.feed||[],1));
+
+  // feed
+  const fd=$('feed'); fd.innerHTML='';
+  (s.feed||[]).forEach(f=>{
+    const d=document.createElement('div');
+    if(f.kind==='hand'){d.className='h';d.textContent=f.text;}
+    else if(f.kind==='board'){d.className='r';d.textContent=f.text;}
+    else if(f.kind==='result'){d.className='r';d.textContent=f.text;}
+    else{const act=f.action==='raise'?('raises to '+f.amount):f.action;
+      d.innerHTML=`<b>${f.name}</b> ${act}`+(f.note?` <span class="reason">— ${f.note}</span>`:'');}
+    fd.appendChild(d);
+  });
+  fd.scrollTop=fd.scrollHeight;
+  // leaderboard is owned by pollResults() (/api/results) to avoid clobbering it
+  // with the match-start snapshot.
+}
+
+function renderLB(ratings){
+  const rows=ratings.slice().filter(r=>r.hands>0).sort((a,b)=>b.elo-a.elo);
+  if(!rows.length){$('lb').textContent='no completed matches yet';return;}
+  let h='<table class="lb"><tr><th>#</th><th>Model</th><th class="n">Elo</th><th class="n">BB/100</th></tr>';
+  rows.forEach((x,i)=>{h+=`<tr><td>${i+1}</td><td>${x.label}${x.tuition?'<span class="tag">docs</span>':''}</td>`+
+    `<td class="n">${x.elo.toFixed(0)}</td><td class="n ${x.bb100>=0?'pos':'neg'}">${x.bb100>=0?'+':''}${x.bb100.toFixed(1)}</td></tr>`;});
+  $('lb').innerHTML=h+'</table>';
+}
+
+async function pollResults(){
+  try{
+    const r=await (await fetch('/api/results',{cache:'no-store'})).json();
+    if(r&&r.config&&r.config.bb) curBB=r.config.bb;
+    if(r&&r.ratings) renderLB(r.ratings);
+  }catch(e){}
+  setTimeout(pollResults,5000);
+}
+
+pollLive(); pollResults();
+</script>
+</body>
+</html>

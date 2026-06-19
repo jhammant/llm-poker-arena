@@ -13,18 +13,35 @@ from urllib.parse import urlparse
 PORT = int(os.environ.get("PORT", 3000))
 TOKEN = os.environ.get("POKER_INGEST_TOKEN", "pokerllm-local-push")
 DATA_FILE = os.environ.get("POKER_DATA_FILE", "/tmp/poker_latest.json")
-# Fallback for local testing (read straight from the project runs dir).
+LIVE_FILE = os.environ.get("POKER_LIVE_FILE", "/tmp/poker_live.json")
+# Fallbacks for local testing (read straight from the project runs dir).
 LOCAL_FALLBACK = os.environ.get("POKER_RUNS_FILE", "/Users/jhammant/dev/PokerTest/runs/overnight_local.json")
+LOCAL_LIVE = os.environ.get("POKER_LIVE_FALLBACK", "/Users/jhammant/dev/PokerTest/runs/live_table.json")
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+try:
+    with open(os.path.join(_HERE, "show.html")) as _f:
+        SHOW_PAGE = _f.read()
+except FileNotFoundError:
+    SHOW_PAGE = "<h1>show.html missing</h1>"
 
 
-def load_results():
-    for path in (DATA_FILE, LOCAL_FALLBACK):
+def _load(*paths):
+    for path in paths:
         try:
             with open(path) as f:
                 return json.load(f)
         except (FileNotFoundError, json.JSONDecodeError, ValueError):
             continue
     return None
+
+
+def load_results():
+    return _load(DATA_FILE, LOCAL_FALLBACK)
+
+
+def load_live():
+    return _load(LIVE_FILE, LOCAL_LIVE)
 
 
 def find_match(matches, x, y):
@@ -152,33 +169,37 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b)
 
     def do_POST(self):
-        if urlparse(self.path).path != "/ingest":
+        path = urlparse(self.path).path
+        if path not in ("/ingest", "/ingest_live"):
             return self._send(404, json.dumps({"error": "not found"}), "application/json")
         if self.headers.get("X-Token", "") != TOKEN:
             return self._send(403, json.dumps({"error": "bad token"}), "application/json")
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length)
+        raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         try:
             data = json.loads(raw)
         except Exception as e:
             return self._send(400, json.dumps({"error": f"invalid json: {e}"}), "application/json")
-        with open(DATA_FILE, "w") as f:
+        target = LIVE_FILE if path == "/ingest_live" else DATA_FILE
+        with open(target, "w") as f:
             json.dump(data, f)
-        return self._send(200, json.dumps({"status": "ok", "matches": len(data.get("matches", []))}),
-                          "application/json")
+        return self._send(200, json.dumps({"status": "ok"}), "application/json")
 
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health":
             return self._send(200, json.dumps({"status": "ok"}), "application/json")
-        results = load_results()
-        if results is None:
-            return self._send(200, "<meta http-equiv='refresh' content='10'>"
-                              "<body style='font-family:sans-serif;background:#0c1018;color:#e8eef6;padding:40px'>"
-                              "<h1>&#9824; LLM Poker Arena</h1><p>Waiting for the first results to be pushed…</p></body>")
+        if path == "/api/live":
+            live = load_live()
+            return self._send(200, json.dumps(live or {}), "application/json")
         if path == "/api/results":
-            return self._send(200, json.dumps(results), "application/json")
-        return self._send(200, render(results))
+            return self._send(200, json.dumps(load_results() or {}), "application/json")
+        if path == "/board":  # plain leaderboard page
+            results = load_results()
+            if results is None:
+                return self._send(200, "<h1>No results yet</h1>")
+            return self._send(200, render(results))
+        # default: the live broadcast page (it fetches /api/live + /api/results)
+        return self._send(200, SHOW_PAGE)
 
 
 if __name__ == "__main__":

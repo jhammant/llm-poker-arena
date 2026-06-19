@@ -103,6 +103,7 @@ def run_bakeoff(
     verbose: bool = True,
     tuition_mode: str = "full",
     gauntlet: bool = False,
+    live_path: str | None = None,
 ) -> dict:
     cfg = load_config()
     tuition_text = load_tuition(tuition_mode)
@@ -113,6 +114,24 @@ def run_bakeoff(
     players = {c.label: _build_player(cfg, c, tuition_text) for c in competitors}
     matches: list = []
     reference: dict = {}
+
+    live = None
+    if live_path:
+        from .live import LiveBroadcast
+        live = LiveBroadcast(live_path)
+
+    # Precompute which (i, j) pairs will actually run, so the broadcast can show
+    # "match X of N".
+    planned = []
+    for i in range(len(competitors)):
+        for j in range(i + 1, len(competitors)):
+            ca, cb = competitors[i], competitors[j]
+            if gauntlet:
+                both_llm = ca.model not in ANCHORS and cb.model not in ANCHORS
+                if both_llm and ca.model != cb.model:
+                    continue
+            planned.append((i, j))
+    total_matches = len(planned)
 
     if verbose:
         tn = f"{tuition_mode} ({len(tuition_text)} chars)" if tuition_text else "MISSING"
@@ -155,32 +174,29 @@ def run_bakeoff(
                 f.write(report.render(results))
         return results
 
-    # ---- round-robin (Elo + head-to-head BB/100), checkpointing each match ----
-    for i in range(len(competitors)):
-        for j in range(i + 1, len(competitors)):
-            ca, cb = competitors[i], competitors[j]
-            if gauntlet:
-                # skip expensive cross-model LLM-vs-LLM; keep anchor matches and
-                # same-model tuition A/B pairs.
-                both_llm = ca.model not in ANCHORS and cb.model not in ANCHORS
-                if both_llm and ca.model != cb.model:
-                    continue
-            pa, pb = players[ca.label], players[cb.label]
-            t0 = time.time()
-            res = play_session(pa, pb, hands, stack, sb, bb,
-                               random.Random(rng.random()), duplicate=duplicate)
-            dt = time.time() - t0
-            chips_a = res.chips[0]
-            score_a = 1.0 if chips_a > 0 else (0.0 if chips_a < 0 else 0.5)
-            elo.update_match(ca.label, cb.label, score_a)
-            bb_deltas[ca.label].extend(res.bb_deltas)
-            bb_deltas[cb.label].extend(-d for d in res.bb_deltas)
-            matches.append({"a": ca.label, "b": cb.label, "hands": hands,
-                            "chips_a": chips_a, "bb100_a": round(bb_per_100(res.bb_deltas), 2),
-                            "seconds": round(dt, 1)})
-            if verbose:
-                print(f"  {ca.label:>22} vs {cb.label:<22} A={chips_a:+7d}  ({dt:5.1f}s)", flush=True)
-            checkpoint()
+    # ---- round-robin (Elo + head-to-head BB/100), checkpointing + streaming ----
+    for match_no, (i, j) in enumerate(planned, 1):
+        ca, cb = competitors[i], competitors[j]
+        pa, pb = players[ca.label], players[cb.label]
+        if live:
+            live.set_match(ca.label, cb.label, match_no, total_matches,
+                           snapshot("running")["ratings"], stack)
+        t0 = time.time()
+        res = play_session(pa, pb, hands, stack, sb, bb, random.Random(rng.random()),
+                           duplicate=duplicate, on_event=(live.on_event if live else None))
+        dt = time.time() - t0
+        chips_a = res.chips[0]
+        score_a = 1.0 if chips_a > 0 else (0.0 if chips_a < 0 else 0.5)
+        elo.update_match(ca.label, cb.label, score_a)
+        bb_deltas[ca.label].extend(res.bb_deltas)
+        bb_deltas[cb.label].extend(-d for d in res.bb_deltas)
+        matches.append({"a": ca.label, "b": cb.label, "hands": hands,
+                        "chips_a": chips_a, "bb100_a": round(bb_per_100(res.bb_deltas), 2),
+                        "seconds": round(dt, 1)})
+        if verbose:
+            print(f"  [{match_no}/{total_matches}] {ca.label:>20} vs {cb.label:<20} "
+                  f"A={chips_a:+7d}  ({dt:5.1f}s)", flush=True)
+        checkpoint()
 
     # ---- optional gauntlet vs the free heuristic (comparable yardstick) ----
     if reference_hands > 0:
@@ -196,6 +212,8 @@ def run_bakeoff(
                 print(f"  [ref] {c.label:>22} vs heuristic  bb/100={reference[c.label]['bb100']:+.1f}", flush=True)
             checkpoint()
 
+    if live:
+        live.finish()
     results = checkpoint("complete")
     if verbose and out_path:
         print(f"\nSaved results -> {out_path}", flush=True)

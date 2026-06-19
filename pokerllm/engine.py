@@ -223,6 +223,7 @@ class HandEngine:
             amount=action.amount,
             note=action.note,
             pot=self.pot,
+            stacks=list(self.stacks),
         )
 
     # ------------------------------------------------------------ betting round
