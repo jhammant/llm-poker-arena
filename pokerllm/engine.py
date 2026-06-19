@@ -44,6 +44,7 @@ class Observation:
     small_blind: int
     legal: LegalActions
     history: list  # list of (street, seat, Action) so far
+    talk_history: list  # list of {"seat":int,"msg":str} table talk so far this hand
 
     def hero_str(self) -> str:
         return cards_str(self.hole)
@@ -89,6 +90,7 @@ class HandEngine:
         self.hole: list[list[int]] = [[], []]
         self.board: list[int] = []
         self.history: list = []
+        self.talk_log: list = []  # {"seat":int,"msg":str} table talk for THIS hand
         self.actions: list = []
         self.last_raise = big_blind  # minimum raise increment
         self.street = "preflop"
@@ -155,6 +157,7 @@ class HandEngine:
             small_blind=self.sb,
             legal=legal,
             history=list(self.history),
+            talk_history=list(self.talk_log),
         )
 
     # --------------------------------------------------------- get/apply action
@@ -171,25 +174,26 @@ class HandEngine:
     def _sanitize(action: Optional[Action], legal: LegalActions) -> Action:
         """Coerce any player output into a legal action: check > call > fold."""
         note = action.note if action else ""
+        talk = action.talk if action else ""
         if action is None or action.kind not in (FOLD, CHECK, CALL, RAISE):
-            return Action(CHECK, note=note) if legal.can_check else Action(FOLD, note=note)
+            return Action(CHECK, note=note, talk=talk) if legal.can_check else Action(FOLD, note=note, talk=talk)
         if action.kind == FOLD:
-            return Action(FOLD, note=note)
+            return Action(FOLD, note=note, talk=talk)
         if action.kind == CHECK:
             if legal.can_check:
                 return action
-            return Action(CALL, note=note) if legal.can_call else Action(FOLD, note=note)
+            return Action(CALL, note=note, talk=talk) if legal.can_call else Action(FOLD, note=note, talk=talk)
         if action.kind == CALL:
             if legal.can_call:
                 return action
-            return Action(CHECK, note=note) if legal.can_check else Action(FOLD, note=note)
+            return Action(CHECK, note=note, talk=talk) if legal.can_check else Action(FOLD, note=note, talk=talk)
         # RAISE
         if not legal.can_raise:
             if legal.can_call:
-                return Action(CALL, note=note)
-            return Action(CHECK, note=note) if legal.can_check else Action(FOLD, note=note)
+                return Action(CALL, note=note, talk=talk)
+            return Action(CHECK, note=note, talk=talk) if legal.can_check else Action(FOLD, note=note, talk=talk)
         amt = max(legal.min_raise_to, min(action.amount, legal.max_raise_to))
-        return Action(RAISE, amt, note=note)
+        return Action(RAISE, amt, note=note, talk=talk)
 
     def _apply(self, seat: int, action: Action, legal: LegalActions) -> None:
         if action.kind == FOLD:
@@ -204,6 +208,8 @@ class HandEngine:
             if inc >= self.last_raise:  # only full raises reset the min-raise size
                 self.last_raise = inc
         self.history.append((self.street, seat, action))
+        if action.talk:
+            self.talk_log.append({"seat": seat, "msg": action.talk[:200]})
         self.actions.append(
             {
                 "street": self.street,
@@ -222,6 +228,7 @@ class HandEngine:
             action=action.kind,
             amount=action.amount,
             note=action.note,
+            talk=action.talk,
             pot=self.pot,
             stacks=list(self.stacks),
             to_call=legal.call_amount,

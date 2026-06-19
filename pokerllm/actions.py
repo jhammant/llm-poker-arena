@@ -17,6 +17,9 @@ class Action:
     amount: int = 0
     # Optional free-text reasoning (LLMs fill this in) for logs / dashboard.
     note: str = ""
+    # Optional table talk: what the player says to the opponent when acting
+    # (default empty = silent).
+    talk: str = ""
 
     def __str__(self) -> str:
         if self.kind == RAISE:

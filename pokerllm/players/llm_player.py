@@ -16,6 +16,7 @@ class LLMPlayer(Player):
         self.retries = retries
         self.usage = UsageAccumulator()
         self.on_stream = None  # optional (seat, thinking, answer) sink for live streaming
+        self.talk = False  # when True, allow/expect table talk in prompts & replies
 
     def _generate(self, messages, obs):
         if self.on_stream is not None:
@@ -28,7 +29,7 @@ class LLMPlayer(Player):
         return self.client.complete(messages)
 
     def act(self, obs):
-        messages = build_messages(obs, self.system_extra)
+        messages = build_messages(obs, self.system_extra, talk=self.talk)
         for _ in range(self.retries + 1):
             try:
                 text, st = self._generate(messages, obs)

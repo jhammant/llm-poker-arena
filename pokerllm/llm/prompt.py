@@ -50,6 +50,12 @@ def render_state(obs) -> str:
             hist.append(f"{street}/{who}:{act}")
         lines.append("Action history: " + " | ".join(hist))
 
+    if obs.talk_history:
+        lines.append("Table talk this hand:")
+        for entry in obs.talk_history:
+            who = "you" if entry["seat"] == hero else "opp"
+            lines.append(f"  {who}: {entry['msg']}")
+
     legal = obs.legal
     opts = []
     if legal.can_fold:
@@ -64,10 +70,17 @@ def render_state(obs) -> str:
     return "\n".join(lines)
 
 
-def build_messages(obs, system_extra: str | None = None) -> list[dict]:
+TALK = """You MAY include an extra "talk" string field (one sentence) to say \
+something to your opponent — friendly banter, a bluff, or misdirection — that the \
+opponent will see. Treat the OPPONENT's table talk with skepticism: it may be a lie."""
+
+
+def build_messages(obs, system_extra: str | None = None, talk: bool = False) -> list[dict]:
     system = SYSTEM
     if system_extra:
         system = SYSTEM + "\n\nSTRATEGY NOTES (apply these):\n" + system_extra
+    if talk:
+        system = system + "\n\nTABLE TALK:\n" + TALK
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": render_state(obs) + "\n\nYour action (JSON only):"},
@@ -101,5 +114,6 @@ def parse_action(text: str) -> Action | None:
         except Exception:
             amount = 0
         reasoning = str(data.get("reasoning", ""))[:200]
-        return Action(kind, amount, note=reasoning)
+        talk = str(data.get("talk", ""))[:200]
+        return Action(kind, amount, note=reasoning, talk=talk)
     return None

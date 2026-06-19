@@ -100,6 +100,9 @@
   .bubble{max-width:330px;min-height:0;font-size:12px;color:var(--text);background:var(--panel2);
     border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-style:italic;line-height:1.45}
   .bubble:empty{display:none;border:none;padding:0}
+  .talkbub{max-width:330px;font-size:12.5px;color:var(--purple);background:rgba(176,139,255,.12);
+    border:1px solid rgba(176,139,255,.45);border-radius:10px;padding:7px 11px;line-height:1.45;font-weight:600}
+  .talkbub:empty{display:none;border:none;padding:0}
 
   .side{display:flex;flex-direction:column;gap:14px}
   .card-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -117,6 +120,8 @@
   #feed .act{margin:3px 0}
   #feed .reason{color:#9fb6cf;font-style:italic}
   #feed .res{color:var(--green);font-weight:600;margin-top:4px}
+  #feed .talk{color:var(--purple);margin:3px 0}
+  #feed .talk b{color:var(--purple)}
   .miniLB{font-size:13px}
   .miniLB .row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)}
   .miniLB .row:last-child{border:none}
@@ -231,6 +236,7 @@
         </div>
         <div class="cards" id="cards0"></div>
         <div class="bubble" id="bub0"></div>
+        <div class="talkbub" id="talk0"></div>
       </div>
       <div class="board">
         <div class="street" id="street"></div>
@@ -238,6 +244,7 @@
         <div class="pot" id="pot">pot 0</div>
       </div>
       <div class="seat bottom">
+        <div class="talkbub" id="talk1"></div>
         <div class="bubble" id="bub1"></div>
         <div class="cards" id="cards1"></div>
         <div class="plate" id="plate1">
@@ -448,6 +455,11 @@ function render(s){
   $('bub0').textContent = (r=>r?('“'+r+'”'):'')(lastReasonBySeat(s.feed||[],0));
   $('bub1').textContent = (r=>r?('“'+r+'”'):'')(lastReasonBySeat(s.feed||[],1));
 
+  // table talk (chat/bluffs) — off by default, so usually empty
+  const talk=s.talk;
+  $('talk0').textContent = (talk&&talk.seat===0&&talk.msg)?('\u{1F4AC} “'+talk.msg+'”'):'';
+  $('talk1').textContent = (talk&&talk.seat===1&&talk.msg)?('\u{1F4AC} “'+talk.msg+'”'):'';
+
   // thinking stream
   const tb=$('thinkbox');
   if(running && s.thinking && s.thinking.text){
@@ -464,6 +476,8 @@ function render(s){
     if(f.kind==='hand'){d.className='h';d.textContent=f.text;}
     else if(f.kind==='board'){d.className='r';d.textContent=f.text;}
     else if(f.kind==='result'){d.className='res';d.textContent=f.text;}
+    else if(f.kind==='talk'){d.className='talk';
+      d.innerHTML=`\u{1F4AC} <b>${esc(f.name)}</b>: “<i>${esc(f.msg)}</i>”`;}
     else{const act=f.action==='raise'?('raises to '+f.amount):(f.action==='bet'?('bets '+f.amount):f.action);
       d.className='act';
       d.innerHTML=`<b>${esc(f.name)}</b> ${esc(act)}`+(f.note?` <span class="reason">— ${esc(f.note)}</span>`:'');}

@@ -26,7 +26,7 @@ class LiveBroadcast:
             "street": "", "pot": 0, "stacks": [0, 0], "start_stack": 0, "bb": 2,
             "last_action": None, "feed": [], "result": None, "score": [0, 0],
             "leaderboard": [], "schedule": [], "thinking": None, "recent_hands": [],
-            "updated": "",
+            "talk": None, "updated": "",
         }
 
     # -------------------------------------------------------------- schedule
@@ -86,6 +86,7 @@ class LiveBroadcast:
             s["last_action"] = None
             s["result"] = None
             s["thinking"] = None
+            s["talk"] = None
             s["feed"].append({"kind": "hand", "text": f"— hand {s['hand_no']} (dealer: {names[ev['button']]}) —"})
             self._cur = {"hand_no": s["hand_no"], "names": list(names),
                          "button": ev["button"], "events": [dict(ev)]}
@@ -105,7 +106,12 @@ class LiveBroadcast:
                                 "amount": ev["amount"], "note": ev.get("note", "")}
             s["feed"].append({"kind": "action", "seat": seat, "name": names[seat],
                               "action": ev["action"], "amount": ev["amount"], "note": ev.get("note", "")})
+            if ev.get("talk"):
+                s["talk"] = {"seat": seat, "name": names[seat], "msg": ev["talk"]}
+                s["feed"].append({"kind": "talk", "seat": seat, "name": names[seat], "msg": ev["talk"]})
             if self._cur:
+                # dict(ev) copies the action event verbatim, so any "talk" string
+                # is carried into recent_hands automatically.
                 self._cur["events"].append(dict(ev))
         elif t == "result":
             d = ev["deltas"]

@@ -180,6 +180,7 @@ def run_bakeoff(
     gauntlet: bool = False,
     live_path: str | None = None,
     repeats: int = 1,
+    talk: bool = False,
 ) -> dict:
     cfg = load_config()
     tuition_text = load_tuition(tuition_mode)
@@ -190,6 +191,10 @@ def run_bakeoff(
     pairings: dict = {}  # head-to-head aggregate, keyed by sorted (a, b)
 
     players = {c.label: _build_player(cfg, c, tuition_text) for c in competitors}
+    if talk:  # enable table talk for every LLM player
+        for c in competitors:
+            if isinstance(players[c.label], LLMPlayer):
+                players[c.label].talk = True
     matches: list = []
     analyzer = _SoundnessAnalyzer()  # per-decision EV vs perfect (no-op if equity.py absent)
 
@@ -240,6 +245,7 @@ def run_bakeoff(
             "created": datetime.datetime.now().isoformat(timespec="seconds"),
             "config": {"hands": hands, "stack": stack, "sb": sb, "bb": bb, "seed": seed,
                        "duplicate": duplicate, "repeats": repeats,
+                       "talk": talk,
                        "gauntlet": gauntlet, "tuition_mode": tuition_mode,
                        "tuition_corpus": bool(tuition_text),
                        "tuition_chars": len(tuition_text) if tuition_text else 0,

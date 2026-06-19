@@ -87,7 +87,8 @@ def run_smoke(model: str, hands: int, stack: int, sb: int, bb: int, seed: int) -
 
 
 def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, seed,
-                    duplicate, out, tuition_mode="full", gauntlet=False, live=None, repeats=1):
+                    duplicate, out, tuition_mode="full", gauntlet=False, live=None, repeats=1,
+                    talk=False):
     import datetime
 
     from . import report
@@ -122,7 +123,7 @@ def run_bakeoff_cli(models, tuition_models, hands, ref_hands, stack, sb, bb, see
         out = f"runs/bakeoff_{ts}.json"
     res = run_bakeoff(comps, hands, stack, sb, bb, seed, duplicate, ref_hands,
                       out_path=out, tuition_mode=tuition_mode, gauntlet=gauntlet,
-                      live_path=live, repeats=repeats)
+                      live_path=live, repeats=repeats, talk=talk)
     md_path = out.rsplit(".", 1)[0] + ".md"
     with open(md_path, "w") as f:
         f.write(report.render(res))
@@ -180,6 +181,7 @@ def main() -> None:
                     help="skip cross-model LLM-vs-LLM; keep anchor matches + same-model tuition A/B")
     bo.add_argument("--live", default=None, help="path to write the live broadcast state JSON")
     bo.add_argument("--repeats", type=int, default=1, help="repeat the whole round-robin N times (accumulate toward significance)")
+    bo.add_argument("--talk", action="store_true", help="enable table talk: LLMs may chat/bluff each other (off by default)")
     bo.add_argument("--out", default=None)
 
     rep = sub.add_parser("report")
@@ -204,7 +206,7 @@ def main() -> None:
         run_bakeoff_cli(models, tuition, args.hands, args.reference_hands,
                         args.stack, args.sb, args.bb, args.seed, args.duplicate, args.out,
                         tuition_mode=args.tuition_mode, gauntlet=args.gauntlet, live=args.live,
-                        repeats=args.repeats)
+                        repeats=args.repeats, talk=args.talk)
     elif args.cmd == "report":
         from . import report
         out = args.out or args.json.rsplit(".", 1)[0] + ".md"
