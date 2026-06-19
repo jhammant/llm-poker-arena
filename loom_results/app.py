@@ -44,6 +44,30 @@ def load_live():
     return _load(LIVE_FILE, LOCAL_LIVE)
 
 
+try:
+    import loom_sdk  # provided when deployed on Loom with `consumes: [analytics]`
+except Exception:
+    loom_sdk = None
+
+
+def track_view(path):
+    if loom_sdk is None:
+        return
+    try:
+        loom_sdk.analytics().track("page_view", {"path": path})  # fire-and-forget
+    except Exception:
+        pass
+
+
+def view_stats():
+    if loom_sdk is None:
+        return {"analytics": "not configured (run on Loom for stats)"}
+    try:
+        return loom_sdk.analytics().stats()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def find_match(matches, x, y):
     for m in matches:
         if m["a"] == x and m["b"] == y:
@@ -193,12 +217,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps(live or {}), "application/json")
         if path == "/api/results":
             return self._send(200, json.dumps(load_results() or {}), "application/json")
+        if path == "/api/stats":  # loom analytics: page-view stats
+            return self._send(200, json.dumps(view_stats()), "application/json")
         if path == "/board":  # plain leaderboard page
+            track_view("/board")
             results = load_results()
             if results is None:
                 return self._send(200, "<h1>No results yet</h1>")
             return self._send(200, render(results))
         # default: the live broadcast page (it fetches /api/live + /api/results)
+        track_view("/")
         return self._send(200, SHOW_PAGE)
 
 

@@ -48,6 +48,11 @@ players:
     model: qwen/qwen3.5-35b-a3b
     enabled: false
     tags: [strong, local]
+  - name: qwen3-coder
+    provider: lmstudio
+    model: qwen/qwen3-coder-next
+    enabled: true
+    tags: [coder, local]           # code-tuned — fun "can a coder model play poker?" entry
   - name: glm-4.7-flash
     provider: lmstudio
     model: zai-org/glm-4.7-flash

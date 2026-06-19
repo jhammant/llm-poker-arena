@@ -9,3 +9,6 @@ metadata:
   tags: [poker, llm, leaderboard, elo]
 health:
   path: /health
+consumes:
+  - service: analytics       # Loom wires the endpoint+token; we track page views
+    scope: track

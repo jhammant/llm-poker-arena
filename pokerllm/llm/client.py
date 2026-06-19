@@ -62,6 +62,19 @@ class LLMClient:
         self.reasoning_effort = reasoning_effort
         self.extra_headers = extra_headers
 
+    def _create(self, kwargs: dict):
+        """Create a completion, retrying without optional params if the server
+        rejects them (e.g. Ollama 400s on reasoning_effort for non-thinking
+        models; some servers reject stream_options)."""
+        try:
+            return self._client.chat.completions.create(**kwargs)
+        except Exception:
+            if kwargs.get("extra_body") or kwargs.get("stream_options"):
+                trimmed = {k: v for k, v in kwargs.items()
+                           if k not in ("extra_body", "stream_options")}
+                return self._client.chat.completions.create(**trimmed)
+            raise
+
     def complete(self, messages: list[dict]) -> tuple[str, CallStat]:
         kwargs: dict = dict(
             model=self.model,
@@ -77,7 +90,7 @@ class LLMClient:
             kwargs["extra_body"] = {"reasoning_effort": self.reasoning_effort}
 
         t0 = time.time()
-        resp = self._client.chat.completions.create(**kwargs)
+        resp = self._create(kwargs)
         dt = time.time() - t0
 
         text = resp.choices[0].message.content or ""
@@ -107,7 +120,7 @@ class LLMClient:
         think: list[str] = []
         ans: list[str] = []
         usage = None
-        for chunk in self._client.chat.completions.create(**kwargs):
+        for chunk in self._create(kwargs):
             if getattr(chunk, "usage", None):
                 usage = chunk.usage
             if not chunk.choices:
