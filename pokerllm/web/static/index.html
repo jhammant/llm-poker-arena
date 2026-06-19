@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>pokerllm — LLM Poker Arena</title>
+<style>
+  :root{
+    --bg:#0c1018; --panel:#141b27; --panel2:#1b2433; --line:#26303f;
+    --felt1:#10603f; --felt2:#0a4630; --text:#e8eef6; --muted:#8aa0b8;
+    --gold:#e7b94e; --red:#ef5d6c; --green:#3fd18b; --blue:#5aa0ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--text);}
+  header{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--line);
+         background:linear-gradient(180deg,#121826,#0c1018)}
+  header h1{font-size:17px;margin:0;letter-spacing:.3px}
+  header h1 span{color:var(--gold)}
+  .controls{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
+  select,input,button{background:var(--panel2);color:var(--text);border:1px solid var(--line);
+        border-radius:8px;padding:7px 10px;font-size:13px}
+  button{background:var(--gold);color:#1a1205;border:none;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  .dot{width:9px;height:9px;border-radius:50%;background:#555;display:inline-block}
+  .dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+  .wrap{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px;max-width:1280px;margin:0 auto}
+  .table{position:relative;border-radius:24px;padding:26px;min-height:520px;
+         background:radial-gradient(120% 90% at 50% 40%,var(--felt1),var(--felt2));
+         border:10px solid #5a3b22;box-shadow:inset 0 0 80px rgba(0,0,0,.5)}
+  .seat{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .seat.top{position:absolute;top:22px;left:50%;transform:translateX(-50%)}
+  .seat.bottom{position:absolute;bottom:22px;left:50%;transform:translateX(-50%)}
+  .plate{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+         border-radius:12px;padding:8px 12px;min-width:230px;transition:box-shadow .2s,border-color .2s}
+  .plate.acting{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 18px rgba(231,185,78,.5)}
+  .plate.winner{border-color:var(--green);box-shadow:0 0 0 2px var(--green),0 0 22px rgba(63,209,139,.55)}
+  .ava{width:34px;height:34px;border-radius:50%;background:#222d40;
+       display:grid;place-items:center;font-weight:800;color:var(--gold)}
+  .pmeta{display:flex;flex-direction:column}
+  .pname{font-weight:700;font-size:14px}
+  .pstack{font-size:12px;color:var(--muted)}
+  .badge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;
+         background:#202b3c;color:var(--muted)}
+  .badge.fold{color:var(--muted)} .badge.check{color:var(--blue)}
+  .badge.call{color:var(--green)} .badge.raise{color:var(--gold);background:#3a2e12}
+  .cards{display:flex;gap:6px}
+  .card{width:40px;height:56px;border-radius:7px;background:#f6f7fb;color:#11161f;
+        display:flex;flex-direction:column;justify-content:space-between;padding:4px 5px;font-weight:800;
+        box-shadow:0 3px 8px rgba(0,0,0,.35)}
+  .card .r{font-size:15px;line-height:1} .card .s{font-size:16px;text-align:right;line-height:1}
+  .card.red{color:#d12d3f} .card.back{background:repeating-linear-gradient(45deg,#34507a,#34507a 6px,#26405f 6px,#26405f 12px)}
+  .board{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;
+         align-items:center;gap:12px}
+  .board .cards .card{width:52px;height:72px}
+  .board .cards .card .r{font-size:20px}.board .cards .card .s{font-size:22px}
+  .pot{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);border-radius:30px;
+       padding:7px 18px;font-weight:800;color:var(--gold)}
+  .street{font-size:12px;color:#bfe9cf;letter-spacing:2px;text-transform:uppercase}
+  .bubble{max-width:280px;min-height:20px;font-size:12px;color:var(--text);background:var(--panel2);
+          border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-style:italic;opacity:.95}
+  .bubble:empty{display:none}
+  .dealer{width:22px;height:22px;border-radius:50%;background:#fff;color:#111;font-weight:900;font-size:11px;
+          display:grid;place-items:center;border:2px solid var(--gold)}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .card-panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card-panel h3{margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .score{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .score b{font-variant-numeric:tabular-nums}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  #feed{height:300px;overflow:auto;font-size:13px;line-height:1.5}
+  #feed .h{color:var(--gold);font-weight:700;margin-top:6px}
+  #feed .r{color:var(--muted)}
+  #feed .reason{color:#9fb6cf;font-style:italic}
+  table.lb{width:100%;border-collapse:collapse;font-size:13px}
+  table.lb th,table.lb td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
+  table.lb td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .tag{font-size:10px;background:#3a2e12;color:var(--gold);border-radius:6px;padding:1px 5px;margin-left:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>♠ pokerllm</span> — LLM Poker Arena</h1>
+  <div class="controls">
+    <select id="p0"></select>
+    <span style="color:var(--muted)">vs</span>
+    <select id="p1"></select>
+    <input id="hands" type="number" value="12" min="1" max="200" style="width:70px" title="hands" />
+    <label style="font-size:12px;color:var(--muted)">delay
+      <input id="delay" type="number" value="0.6" step="0.1" min="0" style="width:60px" /></label>
+    <button id="start">▶ Deal</button>
+    <span class="dot" id="dot"></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="table" id="table">
+    <div class="seat top">
+      <div class="plate" id="plate0">
+        <div class="ava" id="ava0">?</div>
+        <div class="pmeta"><div class="pname" id="name0">—</div><div class="pstack" id="stack0"></div></div>
+        <div class="badge" id="badge0"></div>
+      </div>
+      <div class="cards" id="cards0"></div>
+      <div class="bubble" id="bub0"></div>
+    </div>
+
+    <div class="board">
+      <div class="street" id="street"></div>
+      <div class="cards" id="board"></div>
+      <div class="pot" id="pot">pot 0</div>
+    </div>
+
+    <div class="seat bottom">
+      <div class="bubble" id="bub1"></div>
+      <div class="cards" id="cards1"></div>
+      <div class="plate" id="plate1">
+        <div class="ava" id="ava1">?</div>
+        <div class="pmeta"><div class="pname" id="name1">—</div><div class="pstack" id="stack1"></div></div>
+        <div class="badge" id="badge1"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card-panel">
+      <h3>Scoreboard <span id="handcount" style="float:right;color:var(--muted)"></span></h3>
+      <div class="score"><span id="sn0">—</span><b id="ss0">0 bb</b></div>
+      <div class="score"><span id="sn1">—</span><b id="ss1">0 bb</b></div>
+    </div>
+    <div class="card-panel">
+      <h3>Live action</h3>
+      <div id="feed"></div>
+    </div>
+    <div class="card-panel">
+      <h3>Leaderboard (latest run) <button id="refreshlb" style="float:right;padding:3px 8px;font-size:11px">↻</button></h3>
+      <div id="lb" style="color:var(--muted);font-size:13px">no runs yet</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const SUIT = {s:'♠',h:'♥',d:'♦',c:'♣'}, RED = {h:1,d:1};
+let bb = 2, ws = null;
+
+function cardEl(tok){
+  const d = document.createElement('div'); d.className='card';
+  if(!tok || tok==='-'){ d.className='card back'; return d; }
+  const rank = tok[0]==='T' ? '10' : tok[0];
+  const suit = tok[1];
+  if(RED[suit]) d.classList.add('red');
+  d.innerHTML = `<div class="r">${rank}</div><div class="s">${SUIT[suit]||''}</div>`;
+  return d;
+}
+function renderCards(el, str){
+  el.innerHTML='';
+  (str && str!=='-' ? str.trim().split(/\s+/) : []).forEach(t=>el.appendChild(cardEl(t)));
+}
+function feed(html, cls){ const f=$('feed'); const d=document.createElement('div'); if(cls)d.className=cls; d.innerHTML=html; f.appendChild(d); f.scrollTop=f.scrollHeight; }
+function bbfmt(chips){ const v=chips/bb; return (v>=0?'+':'')+v.toFixed(1)+' bb'; }
+function acting(seat){ for(const s of [0,1]) $('plate'+s).classList.toggle('acting', s===seat); }
+function clearActing(){ $('plate0').classList.remove('acting'); $('plate1').classList.remove('acting'); }
+
+async function loadPlayers(){
+  const r = await fetch('/api/players'); const j = await r.json();
+  const opts = [...j.builtin, ...j.models];
+  for(const sel of [$('p0'),$('p1')]){
+    sel.innerHTML='';
+    opts.forEach(o=>{ const op=document.createElement('option'); op.value=o; op.textContent=o; sel.appendChild(op); });
+  }
+  $('p0').value = j.builtin[0]||opts[0];
+  $('p1').value = j.builtin[1]||opts[1]||opts[0];
+}
+
+async function loadLeaderboard(){
+  const r = await fetch('/api/runs'); const j = await r.json();
+  if(!j.runs.length){ $('lb').textContent='no runs yet'; return; }
+  const run = j.runs[0];
+  const rows = (run.ratings||[]).slice().sort((a,b)=>b.elo-a.elo);
+  let h = `<table class="lb"><tr><th>#</th><th>Competitor</th><th class="n">Elo</th><th class="n">BB/100</th></tr>`;
+  rows.forEach((x,i)=>{ h+=`<tr><td>${i+1}</td><td>${x.label}${x.tuition?'<span class="tag">tuition</span>':''}</td>`+
+        `<td class="n">${x.elo.toFixed(0)}</td><td class="n ${x.bb100>=0?'pos':'neg'}">${x.bb100>=0?'+':''}${x.bb100.toFixed(1)}</td></tr>`; });
+  h+='</table>'; $('lb').innerHTML = h + `<div class="r" style="margin-top:6px;color:var(--muted);font-size:11px">${run.path} · ${run.created||''}</div>`;
+}
+
+function start(){
+  if(ws){ ws.close(); }
+  const p0=$('p0').value, p1=$('p1').value, hands=$('hands').value, delay=$('delay').value;
+  $('feed').innerHTML=''; $('start').disabled=true;
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/play?p0=${p0}&p1=${p1}&hands=${hands}&delay=${delay}`);
+  ws.onopen = ()=>$('dot').classList.add('on');
+  ws.onclose = ()=>{ $('dot').classList.remove('on'); $('start').disabled=false; };
+  ws.onmessage = ev => handle(JSON.parse(ev.data));
+}
+
+function handle(e){
+  switch(e.type){
+    case 'init':
+      bb = e.bb;
+      $('name0').textContent=e.names[0]; $('name1').textContent=e.names[1];
+      $('ava0').textContent=e.names[0][0].toUpperCase(); $('ava1').textContent=e.names[1][0].toUpperCase();
+      $('sn0').textContent=e.names[0]; $('sn1').textContent=e.names[1];
+      $('ss0').textContent='0 bb'; $('ss1').textContent='0 bb';
+      feed(`<span class="h">${e.names[0]} vs ${e.names[1]} — ${e.hands} hands</span>`);
+      break;
+    case 'hand_start':
+      clearActing(); $('badge0').textContent=''; $('badge1').textContent='';
+      $('plate0').classList.remove('winner'); $('plate1').classList.remove('winner');
+      $('bub0').textContent=''; $('bub1').textContent='';
+      renderCards($('cards0'), e.holes[0]); renderCards($('cards1'), e.holes[1]);
+      renderCards($('board'),'-'); $('board').innerHTML='';
+      $('street').textContent='PREFLOP'; $('pot').textContent='pot '+(e.sb+e.bb);
+      // dealer button
+      $('ava0').classList.toggle('dealer', e.button===0); $('ava1').classList.toggle('dealer', e.button===1);
+      feed(`<span class="h">— new hand (dealer: ${e.button===0?$('name0').textContent:$('name1').textContent}) —</span>`);
+      break;
+    case 'board':
+      renderCards($('board'), e.board); $('street').textContent=e.street.toUpperCase();
+      feed(`<span class="r">${e.street}: ${e.board}</span>`);
+      break;
+    case 'action': {
+      acting(e.seat);
+      const b=$('badge'+e.seat); b.className='badge '+e.action;
+      b.textContent = e.action==='raise' ? ('RAISE '+e.amount) : e.action.toUpperCase();
+      $('pot').textContent='pot '+e.pot;
+      if(e.note) $('bub'+e.seat).textContent = '“'+e.note+'”';
+      const nm = e.seat===0?$('name0').textContent:$('name1').textContent;
+      const act = e.action==='raise'?('raises to '+e.amount):e.action;
+      feed(`<b>${nm}</b> ${act}` + (e.note?` <span class="reason">— ${e.note}</span>`:''));
+      break; }
+    case 'score':
+      $('ss0').textContent=bbfmt(e.score[0]); $('ss1').textContent=bbfmt(e.score[1]);
+      $('ss0').className=e.score[0]>=0?'pos':'neg'; $('ss1').className=e.score[1]>=0?'pos':'neg';
+      $('handcount').textContent=`hand ${e.hand}/${e.hands}`;
+      break;
+    case 'result': {
+      clearActing();
+      if(e.deltas[0]>e.deltas[1]) $('plate0').classList.add('winner');
+      else if(e.deltas[1]>e.deltas[0]) $('plate1').classList.add('winner');
+      if(e.showdown){ renderCards($('cards0'),e.holes[0]); renderCards($('cards1'),e.holes[1]); }
+      feed(`<span class="r">▶ ${e.note}</span>`);
+      break; }
+    case 'session_end':
+      feed(`<span class="h">session over — final: ${bbfmt(e.score[0])} / ${bbfmt(e.score[1])}</span>`);
+      clearActing();
+      break;
+    case 'error':
+      feed(`<span style="color:var(--red)">error: ${e.error}</span>`); break;
+  }
+}
+
+$('start').onclick = start;
+$('refreshlb').onclick = loadLeaderboard;
+loadPlayers(); loadLeaderboard();
+</script>
+</body>
+</html>

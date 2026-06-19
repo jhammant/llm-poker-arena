@@ -166,6 +166,10 @@ def main() -> None:
     rep.add_argument("json", help="path to a saved bakeoff JSON")
     rep.add_argument("--out", default=None)
 
+    dash = sub.add_parser("dashboard")
+    dash.add_argument("--host", default="127.0.0.1")
+    dash.add_argument("--port", type=int, default=8000)
+
     args = ap.parse_args()
 
     if args.cmd == "demo":
@@ -184,6 +188,10 @@ def main() -> None:
         out = args.out or args.json.rsplit(".", 1)[0] + ".md"
         report.render_file(args.json, out)
         print(f"Report -> {out}")
+    elif args.cmd == "dashboard":
+        import uvicorn
+        print(f"Dashboard: http://{args.host}:{args.port}")
+        uvicorn.run("pokerllm.web.server:app", host=args.host, port=args.port, log_level="warning")
     else:
         ap.print_help()
 
