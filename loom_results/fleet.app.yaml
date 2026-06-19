@@ -1,0 +1,11 @@
+name: poker-arena          # -> https://poker-arena.loom.hammant.io
+runtime: python
+port: 3000                 # app binds $PORT
+access: public             # public | gated | private (read-only leaderboard; set 'gated' to require login)
+
+manifest_version: 2
+metadata:
+  description: Live leaderboard for the LLM heads-up poker arena (read-only).
+  tags: [poker, llm, leaderboard, elo]
+health:
+  path: /health
