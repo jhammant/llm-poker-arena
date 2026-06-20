@@ -30,6 +30,10 @@
   @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(63,209,139,.6)}50%{opacity:.5;box-shadow:0 0 0 5px rgba(63,209,139,0)}}
   .matchinfo{color:var(--muted);font-size:13px;text-align:right}
   .matchinfo b{color:var(--text)}
+  .views{margin-left:auto;font-size:12.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+         border-radius:9px;padding:6px 10px;white-space:nowrap}
+  .views b{color:var(--gold);font-variant-numeric:tabular-nums}
+  .views + .gh{margin-left:10px}
   .gh{margin-left:auto;display:inline-flex;align-items:center;gap:7px;text-decoration:none;color:var(--text);
       font-size:13px;font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:9px;
       padding:6px 11px;transition:border-color .15s,background .15s}
@@ -206,6 +210,7 @@
   <h1><span>&#9824; LLM Poker Arena</span></h1>
   <span class="live" id="live">connecting…</span>
   <div class="matchinfo" id="matchinfo"></div>
+  <span class="views" id="views" title="page views · unique visitors since the counter was reset">👁 —</span>
   <a class="gh" href="https://github.com/jhammant/llm-poker-arena" target="_blank" rel="noopener">
     <span class="br">&lsaquo; &rsaquo;</span> Code on GitHub
   </a>
@@ -779,7 +784,17 @@ async function pollResults(){
   setTimeout(pollResults,5000);
 }
 
-pollLive(); pollResults();
+async function pollStats(){
+  try{
+    const s=await (await fetch('/api/stats',{cache:'no-store'})).json();
+    if(s && typeof s.views==='number'){
+      $('views').innerHTML = `👁 <b>${s.views.toLocaleString()}</b> views · <b>${(s.unique||0).toLocaleString()}</b> unique`;
+    }
+  }catch(e){}
+  setTimeout(pollStats,30000);
+}
+
+pollLive(); pollResults(); pollStats();
 </script>
 </body>
 </html>

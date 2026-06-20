@@ -4,9 +4,12 @@ Deployed on Loom (runtime: python -> containerized), so it can't see the host's
 runs/ dir. Instead a tiny host-side loop POSTs each checkpoint to /ingest (token
 protected) and we serve the latest pushed snapshot. Stdlib only; runs no games.
 """
+import hashlib
 import html
 import json
 import os
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -49,23 +52,87 @@ try:
 except Exception:
     loom_sdk = None
 
+# ---- visitor analytics -----------------------------------------------------
+# The shared loom analytics service only does GROUP BY counts (no distinct, no
+# delete), and naive tracking also counted my own curl/test loads. So we keep
+# the authoritative numbers in-app: filter internal traffic, dedupe unique
+# visitors (hashed IP+UA), support reset, and persist to /data (loom's durable
+# dir) so a redeploy doesn't wipe the count.
+VIEWS_FILE = "/data/poker_views.json" if os.path.isdir("/data") else "/tmp/poker_views.json"
+RESET_TOKEN = os.environ.get("POKER_INGEST_TOKEN", "pokerllm-local-push")
+_views_lock = threading.Lock()
+# Any of these substrings in the User-Agent => internal/bot, not a real visitor.
+_INTERNAL_UA = ("curl", "wget", "python", "requests", "go-http", "okhttp",
+                "httpie", "node-fetch", "loom", "health", "probe", "bot", "headless")
 
-def track_view(path):
-    if loom_sdk is None:
-        return
+
+def _load_views():
     try:
-        loom_sdk.analytics().track("page_view", {"path": path})  # fire-and-forget
+        with open(VIEWS_FILE) as f:
+            d = json.load(f)
+        d.setdefault("since", int(time.time()))
+        d.setdefault("total", 0)
+        d.setdefault("uniques", {})
+        return d
+    except Exception:
+        return {"since": int(time.time()), "total": 0, "uniques": {}}
+
+
+_views = _load_views()
+
+
+def _save_views():
+    try:
+        tmp = VIEWS_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(_views, f)
+        os.replace(tmp, VIEWS_FILE)
     except Exception:
         pass
 
 
+def _client_ip(handler):
+    xff = handler.headers.get("X-Forwarded-For", "")
+    return xff.split(",")[0].strip() if xff else handler.client_address[0]
+
+
+def _is_internal(ip, ua):
+    ual = (ua or "").lower()
+    if not ual or any(s in ual for s in _INTERNAL_UA):
+        return True
+    return ip in ("127.0.0.1", "::1", "localhost", "")
+
+
+def record_view(handler, path):
+    ip, ua = _client_ip(handler), handler.headers.get("User-Agent", "")
+    if _is_internal(ip, ua):
+        return
+    h = hashlib.sha256(f"{ip}|{ua}".encode()).hexdigest()[:16]
+    with _views_lock:
+        _views["total"] += 1
+        if h not in _views["uniques"]:
+            _views["uniques"][h] = int(time.time())
+        _save_views()
+    if loom_sdk is not None:  # mirror to the fleet-wide service (best effort)
+        try:
+            loom_sdk.analytics().track("page_view", {"path": path})
+        except Exception:
+            pass
+
+
 def view_stats():
-    if loom_sdk is None:
-        return {"analytics": "not configured (run on Loom for stats)"}
-    try:
-        return loom_sdk.analytics().stats()
-    except Exception as e:
-        return {"error": str(e)}
+    with _views_lock:
+        return {"views": _views["total"], "unique": len(_views["uniques"]),
+                "since": _views["since"]}
+
+
+def reset_views():
+    with _views_lock:
+        _views["since"] = int(time.time())
+        _views["total"] = 0
+        _views["uniques"] = {}
+        _save_views()
+    return view_stats()
 
 
 def find_match(matches, x, y):
@@ -194,6 +261,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/reset_views":
+            if self.headers.get("X-Token", "") != RESET_TOKEN:
+                return self._send(403, json.dumps({"error": "bad token"}), "application/json")
+            return self._send(200, json.dumps(reset_views()), "application/json")
         if path not in ("/ingest", "/ingest_live"):
             return self._send(404, json.dumps({"error": "not found"}), "application/json")
         if self.headers.get("X-Token", "") != TOKEN:
@@ -220,13 +291,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/stats":  # loom analytics: page-view stats
             return self._send(200, json.dumps(view_stats()), "application/json")
         if path == "/board":  # plain leaderboard page
-            track_view("/board")
+            record_view(self, "/board")
             results = load_results()
             if results is None:
                 return self._send(200, "<h1>No results yet</h1>")
             return self._send(200, render(results))
         # default: the live broadcast page (it fetches /api/live + /api/results)
-        track_view("/")
+        record_view(self, "/")
         return self._send(200, SHOW_PAGE)
 
 
